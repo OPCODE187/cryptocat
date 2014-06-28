@@ -340,93 +340,103 @@ Buddy.prototype = {
 	}
 }
 
+//Create a trie for storing buddy list.
 Cryptocat.buddies.createTrie = function() {
-    Cryptocat.buddies.trie = {}
-
+	Cryptocat.buddies.trie = {}
 }
 
+//adds a buddy to the trie,
+//where the end node contains both
+//the fullname and id.
 Cryptocat.buddies.addToTrie = function(nickname, id){
-    if(!Cryptocat.buddies.trie) Cryptocat.buddies.createTrie();
-    var realname = nickname.slice(0)
-    var lowname = nickname.toLowerCase()
-    var curnode = Cryptocat.buddies.trie;
-    for(var i =0; i < lowname.length; ++i){
-        var letter =  lowname[i];
-        if (!(letter in curnode)){
-            curnode[letter] = {}
-        }
-        curnode = curnode[letter]
-    }
-    curnode[null] = {"id":id, "name": realname};
+	if(!Cryptocat.buddies.trie) Cryptocat.buddies.createTrie()
+	var realname = nickname.slice(0)
+	var lowname = nickname.toLowerCase()
+	var curnode = Cryptocat.buddies.trie
+	for(var i =0; i < lowname.length; ++i){
+		var letter =  lowname[i]
+		if (!(letter in curnode)){
+			curnode[letter] = {}
+		}
+		curnode = curnode[letter]
+	}
+	curnode[null] = {'id':id, 'name': realname}
 }
 
+//Fetch a node of names that start with a prefix.
 Cryptocat.buddies.getTrieNode = function(prefix){
-    var curnode = Cryptocat.buddies.trie;
-    for(var i =0; i < prefix.length; ++i){
-        var letter =prefix[i];
-        if (!(letter in curnode)){
-            return null;
-        }
-        curnode = curnode[letter]
-    }
-    return curnode;
+	var curnode = Cryptocat.buddies.trie
+	for(var i =0; i < prefix.length; ++i){
+		var letter =prefix[i]
+		if (!(letter in curnode)){
+			return null
+		}
+		curnode = curnode[letter]
+	}
+	return curnode
 }
 
-Cryptocat.buddies.getBuddyId= function(name){
-    var name = name.toLowerCase()
-    return Cryptocat.buddies.getTrieNode(name)[null];
+
+Cryptocat.buddies.getBuddyFromTrie= function(name){
+	var name = name.toLowerCase()
+	return Cryptocat.buddies.getTrieNode(name)[null]
 }
 
+//We can't remove them outright,
+//so we use a 'tombstone' solution
 Cryptocat.buddies.removeFromTrie= function(name){
-    var name = name.toLowerCase()
-    delete Cryptocat.buddies.getTrieNode(name)[null];
+	var name = name.toLowerCase()
+	delete Cryptocat.buddies.getTrieNode(name)[null]
 }
 
+//Helper function for get Buddies By Prefix
 Cryptocat.buddies.getBuddiesInNode = function(trienode,numbuddies,maxbuddies){
-    var triebuddies = [];
-    for(var letter in trienode){
-        if(letter !== null && letter.length === 1){
-            var letterbuddies = Cryptocat.buddies.getBuddiesInNode(trienode[letter],numbuddies,maxbuddies);
-            for(var buddy =0; buddy < letterbuddies.length; buddy++){
-                triebuddies.push(letter+letterbuddies[buddy]);
-                numbuddies++;
-                if(maxbuddies && numbuddies >= maxbuddies){
-                    return triebuddies;
-                }
-            }
-        }
-    }
+	var triebuddies = []
+	for(var letter in trienode){
+		if(letter !== null && letter.length === 1){
+			var letterbuddies = Cryptocat.buddies.getBuddiesInNode(trienode[letter],numbuddies,maxbuddies)
+			for(var buddy =0; buddy < letterbuddies.length; buddy++){
+				triebuddies.push(letter+letterbuddies[buddy])
+				numbuddies++
+				if(maxbuddies && numbuddies >= maxbuddies){
+					return triebuddies
+				}
+			}
+		}
+	}
 
-    if(trienode[null]){
-        triebuddies.push("");
-    }
-    return triebuddies;
+	if(trienode[null]){
+		triebuddies.push('')
+	}
+	return triebuddies
 }
 
-
+//Get the list of all buddies that start with a prefix,
+//Up to a maximum of maxbuddies.
 Cryptocat.buddies.getBuddiesByPrefix = function(prefix,maxbuddies){
-    var prefix = prefix.toLowerCase()
-    var trienode = Cryptocat.buddies.getTrieNode(prefix);
-    if (!trienode){
-        return [];
-    }
+	var prefix = prefix.toLowerCase()
+	var trienode = Cryptocat.buddies.getTrieNode(prefix)
+	if (!trienode){
+		return []
+	}
 
-    var numbuddies = 0;
-    var buddies = Cryptocat.buddies.getBuddiesInNode(trienode,numbuddies,maxbuddies);
-    for(var i = 0; i < buddies.length; i++){
-        buddies[i] = prefix+buddies[i];
-    }
-    return buddies;
+	var numbuddies = 0
+	var buddies = Cryptocat.buddies.getBuddiesInNode(trienode,numbuddies,maxbuddies)
+	for(var i = 0; i < buddies.length; i++){
+		buddies[i] = prefix+buddies[i]
+	}
+	return buddies
 }
 
+//Hide those in the buddy list which do not start with the prefix.
 Cryptocat.buddies.filterBuddiesByPrefix = function(prefix,maxbuddies){
-    var buddies = Cryptocat.buddies.getBuddiesByPrefix(prefix,maxbuddies);
+	var buddies = Cryptocat.buddies.getBuddiesByPrefix(prefix,maxbuddies)
 
-	$(".buddy").each(function() { $(this).hide() } );
-    for(var buddy in buddies){
-        var buddyID = Cryptocat.buddies.getBuddyId(buddies[buddy])["id"]
-        var buddyElement = $('.buddy').filterByData('id', buddyID).show()
-    }
+	$('.buddy').each(function() { $(this).hide() } )
+	for(var buddy in buddies){
+		var buddyID = Cryptocat.buddies.getBuddyFromTrie(buddies[buddy])['id']
+		$('.buddy').filterByData('id', buddyID).show()
+	}
 
 }
 
@@ -437,7 +447,7 @@ Cryptocat.addBuddy = function(nickname, id, status) {
 	if (!id) { id = getUniqueBuddyID() }
 	var buddy = Cryptocat.buddies[nickname] = new Buddy(nickname, id, status)
 
-    Cryptocat.buddies.addToTrie(nickname,id);
+	Cryptocat.buddies.addToTrie(nickname,id)
 
 	$('#buddyList').queue(function() {
 		var buddyTemplate = Mustache.render(Cryptocat.templates.buddy, {
@@ -447,23 +457,19 @@ Cryptocat.addBuddy = function(nickname, id, status) {
 		})
 		var placement = determineBuddyPlacement(nickname, id, status)
 		$(buddyTemplate).insertAfter(placement).slideDown(100, function() {
-			$('#buddy-' + buddy.id)
-				.unbind('click')
-				.click(function() {
-					Cryptocat.onBuddyClick($(this))
-				}
-			)
+			$('#buddy-' + buddy.id) .unbind('click') .click(function() {
+		        Cryptocat.onBuddyClick($(this))
+            })
 			$('#menu-' + buddy.id).attr('status', 'inactive')
-				.unbind('click')
-				.click(function(e) {
-					e.stopPropagation()
-					openBuddyMenu(nickname)
-				}
-			)
-            buddyNotification(nickname, true)
+                .unbind('click')
+                .click(function(e) {
+                    e.stopPropagation()
+                    openBuddyMenu(nickname)
+                })
+			buddyNotification(nickname, true)
 		})
 	})
-    $('#buddyList').dequeue()
+	$('#buddyList').dequeue()
 }
 
 // Set a buddy's status to `online` or `away`.
@@ -481,8 +487,9 @@ Cryptocat.buddyStatus = function(nickname, status) {
 
 // Handle buddy going offline.
 Cryptocat.removeBuddy = function(nickname) {
-    var buddyID = Cryptocat.buddies[nickname].id
-    var buddyElement = $('.buddy').filterByData('id', buddyID)
+	var buddyID = Cryptocat.buddies[nickname].id
+	var buddyElement = $('.buddy').filterByData('id', buddyID)
+	Cryptocat.buddies.removeFromTrie(nickname)
 	delete Cryptocat.buddies[nickname]
 	if (!buddyElement.length) {
 		return
