@@ -340,10 +340,105 @@ Buddy.prototype = {
 	}
 }
 
+Cryptocat.buddies.createTrie = function() {
+    Cryptocat.buddies.trie = {}
+
+}
+
+Cryptocat.buddies.addToTrie = function(nickname, id){
+    if(!Cryptocat.buddies.trie) Cryptocat.buddies.createTrie();
+    var realname = nickname.slice(0)
+    var lowname = nickname.toLowerCase()
+    var curnode = Cryptocat.buddies.trie;
+    for(var i =0; i < lowname.length; ++i){
+        var letter =  lowname[i];
+        if (!(letter in curnode)){
+            curnode[letter] = {}
+        }
+        curnode = curnode[letter]
+    }
+    curnode[null] = {"id":id, "name": realname};
+}
+
+Cryptocat.buddies.getTrieNode = function(prefix){
+    var curnode = Cryptocat.buddies.trie;
+    for(var i =0; i < prefix.length; ++i){
+        var letter =prefix[i];
+        if (!(letter in curnode)){
+            return null;
+        }
+        curnode = curnode[letter]
+    }
+    return curnode;
+}
+
+Cryptocat.buddies.getBuddyId= function(name){
+    var name = name.toLowerCase()
+    return Cryptocat.buddies.getTrieNode(name)[null];
+}
+
+Cryptocat.buddies.removeFromTrie= function(name){
+    var name = name.toLowerCase()
+    delete Cryptocat.buddies.getTrieNode(name)[null];
+}
+
+Cryptocat.buddies.getBuddiesInNode = function(trienode,numbuddies,maxbuddies){
+    var triebuddies = [];
+    for(var letter in trienode){
+        if(letter !== null && letter.length === 1){
+            var letterbuddies = Cryptocat.buddies.getBuddiesInNode(trienode[letter],numbuddies,maxbuddies);
+            for(var buddy =0; buddy < letterbuddies.length; buddy++){
+                triebuddies.push(letter+letterbuddies[buddy]);
+                numbuddies++;
+                if(maxbuddies && numbuddies >= maxbuddies){
+                    return triebuddies;
+                }
+            }
+        }
+    }
+
+    if(trienode[null]){
+        triebuddies.push("");
+    }
+    return triebuddies;
+}
+
+
+Cryptocat.buddies.getBuddiesByPrefix = function(prefix,maxbuddies){
+    var prefix = prefix.toLowerCase()
+    var trienode = Cryptocat.buddies.getTrieNode(prefix);
+    if (!trienode){
+        return [];
+    }
+
+    var numbuddies = 0;
+    var buddies = Cryptocat.buddies.getBuddiesInNode(trienode,numbuddies,maxbuddies);
+    for(var i = 0; i < buddies.length; i++){
+        buddies[i] = prefix+buddies[i];
+    }
+    return buddies;
+}
+
+Cryptocat.buddies.filterBuddiesByPrefix = function(prefix,maxbuddies){
+    var buddies = Cryptocat.buddies.getBuddiesByPrefix(prefix,maxbuddies);
+
+	$(".buddy").each(function() { $(this).hide() } );
+    for(var buddy in buddies){
+        var buddyID = Cryptocat.buddies.getBuddyId(buddies[buddy])["id"]
+        var buddyElement = $('.buddy').filterByData('id', buddyID).show()
+    }
+
+}
+
+
+
 // Build new buddy.
 Cryptocat.addBuddy = function(nickname, id, status) {
 	if (!id) { id = getUniqueBuddyID() }
 	var buddy = Cryptocat.buddies[nickname] = new Buddy(nickname, id, status)
+
+    Cryptocat.buddies.addToTrie(nickname,id);
+
 	$('#buddyList').queue(function() {
 		var buddyTemplate = Mustache.render(Cryptocat.templates.buddy, {
 			buddyID: buddy.id,
@@ -365,10 +460,10 @@ Cryptocat.addBuddy = function(nickname, id, status) {
 					openBuddyMenu(nickname)
 				}
 			)
-			buddyNotification(nickname, true)
+            buddyNotification(nickname, true)
 		})
 	})
-	$('#buddyList').dequeue()
+    $('#buddyList').dequeue()
 }
 
 // Set a buddy's status to `online` or `away`.
@@ -386,8 +481,8 @@ Cryptocat.buddyStatus = function(nickname, status) {
 
 // Handle buddy going offline.
 Cryptocat.removeBuddy = function(nickname) {
-	var buddyID = Cryptocat.buddies[nickname].id
-	var buddyElement = $('.buddy').filterByData('id', buddyID)
+    var buddyID = Cryptocat.buddies[nickname].id
+    var buddyElement = $('.buddy').filterByData('id', buddyID)
 	delete Cryptocat.buddies[nickname]
 	if (!buddyElement.length) {
 		return
@@ -1315,6 +1410,11 @@ $('#userInputText').keydown(function(e) {
 		}, 7000, destination, type)
 	}
 })
+
+
+$('#buddyFilter').keyup(function(e){
+    Cryptocat.buddies.filterBuddiesByPrefix($("#buddyFilter").val())
+});
 
 $('#userInputText').keyup(function(e) {
 	if (e.keyCode === 13) {
