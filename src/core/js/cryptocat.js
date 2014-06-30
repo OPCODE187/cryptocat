@@ -439,9 +439,9 @@ Cryptocat.buddies.getBuddiesInNode = function(trienode,numbuddies,maxbuddies){
 	}
 
 	if(trienode[null]){
-  	for(var i =0; i < trienode[null].length;i++){
-  		triebuddies.push(trienode[null][i].name)
-  	}
+		for(var i =0; i < trienode[null].length;i++){
+			triebuddies.push(trienode[null][i].name)
+  		}
 	}
 	return triebuddies
 }
