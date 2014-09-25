@@ -340,10 +340,166 @@ Buddy.prototype = {
 	}
 }
 
+//======== Start buddy filter ============
+
+//Create a trie for storing buddy list.
+Cryptocat.createBuddyTrie = function() {
+	Cryptocat.buddyTrie = {}
+}
+
+Cryptocat.addNameToBuddyTrie = function(name,nickname,id){
+	var lowname = name.toLowerCase()
+	var curnode = Cryptocat.buddyTrie
+	for(var i =0; i < lowname.length; ++i){
+		var letter =  lowname[i]
+		if (!(letter in curnode)){
+			curnode[letter] = {}
+		}
+		curnode = curnode[letter]
+	}
+    if(curnode[null]){
+        curnode[null].push({'id':id, 'name': nickname})
+    } else {
+	    curnode[null] = [{'id':id, 'name': nickname}]
+    }
+}
+
+//adds a buddy to the trie,
+//where the end node contains both
+//the fullname and id.
+Cryptocat.addToBuddyTrie = function(nickname, id){
+	if(!Cryptocat.buddyTrie){ Cryptocat.createBuddyTrie()}
+    var names = nickname.split(' ')
+    for(var i = 0; i < names.length; i++){
+        var name = names[i]
+        Cryptocat.addNameToBuddyTrie(name,nickname,id)
+    }
+}
+
+//Fetch a node of names that start with a prefix.
+Cryptocat.getBuddyTrieNode = function(prefix){
+	var curnode = Cryptocat.buddyTrie
+	for(var i =0; i < prefix.length; ++i){
+		var letter =prefix[i]
+		if (!(letter in curnode)){
+			return null
+		}
+		curnode = curnode[letter]
+	}
+	return curnode
+}
+
+
+//Fetches a buddy from the trie, no matter the case.
+Cryptocat.getBuddyFromBuddyTrie= function(name){
+	var lowername = name.toLowerCase()
+	var lowernames = lowername.split(' ')
+    for(var i = 0; i < lowernames.length;i++){
+        var lowname = lowernames[i]
+        var node = Cryptocat.getBuddyTrieNode(lowname)[null]
+        for(var j = 0; j < node.length;j++){
+            if(node[j].name.toLowerCase() === lowername){
+                return node[j]
+            }
+        }
+    }
+    //No such buddy
+    return null
+}
+
+
+//To remove a name, we remove all the elements of that name.
+Cryptocat.removeFromBuddyTrie= function(name){
+	var lowername = name.toLowerCase()
+	var lowernames = lowername.split(' ')
+	for(var i = 0; i < lowernames.length;i++){
+		var lowname = lowernames[i]
+		var node = Cryptocat.getBuddyTrieNode(lowname)[null]
+		for(var j = 0; j < node.length;j++){
+			if(node[j].name.toLowerCase() === lowername){
+				node.splice(j,1)
+				break
+			}
+		}
+	}
+}
+
+//Helper function for get Buddies By Prefix
+Cryptocat.getBuddiesInNode = function(trienode,numbuddies,maxbuddies){
+	var triebuddies = []
+	for(var letter in trienode){
+		if(letter !== null && letter.length === 1){
+			var letterbuddies = Cryptocat.getBuddiesInNode(trienode[letter],numbuddies,maxbuddies)
+			for(var buddy =0; buddy < letterbuddies.length; buddy++){
+				triebuddies.push(letterbuddies[buddy])
+				numbuddies++
+				if(maxbuddies && numbuddies >= maxbuddies){
+					return triebuddies
+				}
+			}
+		}
+	}
+
+	if(trienode[null]){
+		for(var i =0; i < trienode[null].length;i++){
+			triebuddies.push(trienode[null][i].name)
+		}
+	}
+	return triebuddies
+}
+
+//Get the list of all buddies that start with a prefix,
+//Up to a maximum of maxbuddies.
+Cryptocat.getBuddiesByPrefix = function(prefix,maxbuddies){
+	var lowerprefix = prefix.toLowerCase()
+	var lowerprefixes = lowerprefix.split(' ')
+	var matches = []
+	var tempmatches = []
+	for(var i = 0; i < lowerprefixes.length; i++){
+		tempmatches = []
+	  var trienode = Cryptocat.getBuddyTrieNode(lowerprefixes[i])
+		if (!trienode){
+			return []
+		}
+		var numbuddies = 0
+		var buddies = Cryptocat.getBuddiesInNode(trienode,numbuddies,maxbuddies)
+		if(i > 0){
+			for(var j = 0; j < buddies.length; j++){
+				var buddy = buddies[j]
+				if(matches.indexOf(buddy) >= 0){
+					tempmatches.push(buddy)
+				}
+			}
+		} else {
+			tempmatches = buddies
+		}
+		matches = tempmatches;
+	}
+
+	return matches
+}
+
+//Hide those in the buddy list which do not start with the prefix.
+Cryptocat.filterBuddiesByPrefix = function(prefix,maxbuddies){
+	var buddies = Cryptocat.getBuddiesByPrefix(prefix,maxbuddies)
+
+	$('.buddy').each(function() { $(this).hide() } )
+	for(var buddy =0; buddy < buddies.length; buddy++){
+		var buddyID = Cryptocat.getBuddyFromBuddyTrie(buddies[buddy])['id']
+		$('.buddy').filterByData('id', buddyID).show()
+	}
+}
+
+//======== End buddy filter ============
+
+
 // Build new buddy.
 Cryptocat.addBuddy = function(nickname, id, status) {
 	if (!id) { id = getUniqueBuddyID() }
 	var buddy = Cryptocat.buddies[nickname] = new Buddy(nickname, id, status)
+
+	Cryptocat.addToBuddyTrie(nickname,id)
+
 	$('#buddyList').queue(function() {
 		var buddyTemplate = Mustache.render(Cryptocat.templates.buddy, {
 			buddyID: buddy.id,
@@ -352,19 +508,15 @@ Cryptocat.addBuddy = function(nickname, id, status) {
 		})
 		var placement = determineBuddyPlacement(nickname, id, status)
 		$(buddyTemplate).insertAfter(placement).slideDown(100, function() {
-			$('#buddy-' + buddy.id)
-				.unbind('click')
-				.click(function() {
-					Cryptocat.onBuddyClick($(this))
-				}
-			)
+			$('#buddy-' + buddy.id) .unbind('click') .click(function() {
+		        Cryptocat.onBuddyClick($(this))
+            })
 			$('#menu-' + buddy.id).attr('status', 'inactive')
-				.unbind('click')
-				.click(function(e) {
-					e.stopPropagation()
-					openBuddyMenu(nickname)
-				}
-			)
+                .unbind('click')
+                .click(function(e) {
+                    e.stopPropagation()
+                    openBuddyMenu(nickname)
+                })
 			buddyNotification(nickname, true)
 		})
 	})
@@ -388,6 +540,7 @@ Cryptocat.buddyStatus = function(nickname, status) {
 Cryptocat.removeBuddy = function(nickname) {
 	var buddyID = Cryptocat.buddies[nickname].id
 	var buddyElement = $('.buddy').filterByData('id', buddyID)
+	Cryptocat.removeFromBuddyTrie(nickname)
 	delete Cryptocat.buddies[nickname]
 	if (!buddyElement.length) {
 		return
@@ -1315,6 +1468,11 @@ $('#userInputText').keydown(function(e) {
 		}, 7000, destination, type)
 	}
 })
+
+
+$('#buddyFilter').keyup(function(){
+    Cryptocat.filterBuddiesByPrefix($('#buddyFilter').val())
+});
 
 $('#userInputText').keyup(function(e) {
 	if (e.keyCode === 13) {
